@@ -1,7 +1,8 @@
 import { STORE_MUTED } from '../const.js';
 
-// All audio is synthesized — no files. A lookahead scheduler drives a
-// kick/bass/arp loop whose tempo and filter open up with fall speed.
+// Procedural SFX + optional looped soundtrack ("astral-float"). While the
+// track is playing the synth bed is paused so the two don't stack; gem/death/
+// zone/ui one-shots still fire through WebAudio.
 const SEMI = (n) => 55 * Math.pow(2, n / 12); // A1 root
 const MINOR = [0, 3, 5, 7, 10, 12, 15, 19];
 const BASS_PATTERN = [0, 0, -2, 5]; // per bar
@@ -42,25 +43,34 @@ export class Synth {
     this.muted = !this.muted;
     localStorage.setItem(STORE_MUTED, this.muted ? '1' : '0');
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.4;
-    if (this.audioTrack) this.audioTrack.setMute(this.muted);
+    if (this.audioTrack) {
+      this.audioTrack.setMute(this.muted);
+      this.audioTrack.setVolume(this.muted ? 0 : 0.6);
+    }
     return this.muted;
   }
 
   playTrack() {
-    if (this.scene && this.scene.sound) {
-      this.audioTrack = this.scene.sound.add('astral-float', {
-        volume: this.muted ? 0 : 0.6,
-        loop: true,
-      });
-      this.audioTrack.play();
-    }
+    if (!this.scene?.sound) return;
+    if (this.audioTrack?.isPlaying) return;
+    this.stopTrack();
+    this.audioTrack = this.scene.sound.add('astral-float', {
+      volume: this.muted ? 0 : 0.6,
+      loop: true,
+    });
+    this.audioTrack.setMute(this.muted);
+    this.audioTrack.play();
+    // Keep the procedural bed clock in sync so it resumes cleanly after stop.
+    if (this.ctx) this.nextTime = this.ctx.currentTime + 0.1;
   }
 
   stopTrack() {
     if (this.audioTrack) {
       this.audioTrack.stop();
+      this.audioTrack.destroy();
       this.audioTrack = null;
     }
+    if (this.ctx) this.nextTime = this.ctx.currentTime + 0.1;
   }
 
   setIntensity(v) {
@@ -72,6 +82,11 @@ export class Synth {
 
   _schedule() {
     if (!this.ctx) return;
+    // Soundtrack owns the music bed while it's running.
+    if (this.audioTrack?.isPlaying) {
+      this.nextTime = this.ctx.currentTime + 0.1;
+      return;
+    }
     while (this.nextTime < this.ctx.currentTime + 0.12) {
       this._playStep(this.step, this.nextTime);
       const bpm = 96 + this.intensity * 72;

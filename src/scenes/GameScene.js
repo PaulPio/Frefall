@@ -96,6 +96,7 @@ export class GameScene extends Phaser.Scene {
     const onDisc = () => {
       if (!this.alive) return;
       this.paused = true;
+      this.player.pauseTrail();
       this.overlay.setVisible(true);
     };
     const onConn = () => this._resume();
@@ -116,6 +117,7 @@ export class GameScene extends Phaser.Scene {
       }
       if (e.key === 'Escape') {
         this.synth.stopTrack();
+        this.synth.setIntensity(0);
         this.scene.start('Menu');
         return;
       }
@@ -129,6 +131,7 @@ export class GameScene extends Phaser.Scene {
     if (this.paused && this.alive) {
       this.paused = false;
       this.overlay.setVisible(false);
+      this.player.resumeTrail();
     }
   }
 
@@ -142,7 +145,23 @@ export class GameScene extends Phaser.Scene {
     const norm = Phaser.Math.Clamp((speed - 300) / 1100, 0, 1);
     const axis = this.controls.update(dt);
 
-    this.player.move(axis * steer * dt, speed * dt, axis, dt);
+    // Sub-step movement so thin hazards can't be tunneled at high fall speed.
+    const dx = axis * steer * dt;
+    const dy = speed * dt;
+    const maxStep = 20;
+    const steps = Math.max(1, Math.ceil(Math.hypot(dx, dy) / maxStep));
+    const sdx = dx / steps;
+    const sdy = dy / steps;
+    const sdt = dt / steps;
+
+    for (let i = 0; i < steps; i++) {
+      this.player.move(sdx, sdy, axis, sdt);
+      if (this.spawner.collide(this.player.rect())) {
+        this.player.setSpeedFeel(norm);
+        this._die(this.player.y / PPM, paletteAt(this.player.y / PPM));
+        return;
+      }
+    }
     this.player.setSpeedFeel(norm);
 
     const cam = this.cameras.main;
@@ -159,8 +178,6 @@ export class GameScene extends Phaser.Scene {
     }
 
     const depth = this.player.y / PPM;
-
-    // hue-shifting world
     const pal = paletteAt(depth);
     cam.setBackgroundColor(pal.bg);
     this.bg.setTint(pal.grid);
@@ -194,7 +211,7 @@ export class GameScene extends Phaser.Scene {
       this.tweens.add({ targets: txt, y: gem.y - 60, alpha: 0, duration: 600, onComplete: () => txt.destroy() });
     }
 
-    // death
+    // Moving hazards (saws / spinners) can enter the player after their update.
     if (this.spawner.collide(this.player.rect())) {
       this._die(depth, pal);
       return;

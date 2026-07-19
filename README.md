@@ -14,11 +14,12 @@ to steer** the falling cube around obstacles. You only fall faster.
 
 No backend. The desktop registers a PeerJS peer (`sunjam-freefall-<code>`) on
 the free PeerJS signaling cloud and shows a QR of the current URL +
-`?room=<code>`. The phone opens that URL, the same build detects `?room=` and
-loads a lightweight DOM controller page (no Phaser), then streams a tilt axis
-at ~30 Hz over a WebRTC data channel. Both sides run a silence watchdog
-(controller stream = its heartbeat; desktop answers at 1 Hz), so a dead phone
-pauses the game within ~4 s and reconnecting auto-resumes.
+`?room=<6-char code>`. The phone opens that URL, the same build detects
+`?room=` and loads a lightweight DOM controller page (no Phaser), then streams
+a tilt axis at ~30 Hz over a WebRTC data channel. While linked, the host
+rejects extra peers (first controller wins until disconnect). Both sides run a
+silence watchdog (controller stream = its heartbeat; desktop answers at 1 Hz),
+so a dead phone pauses the game within ~4 s and reconnecting auto-resumes.
 
 ## Dev
 

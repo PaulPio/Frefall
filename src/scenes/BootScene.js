@@ -9,8 +9,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   preload() {
-    // Load the soundtrack
-    this.load.audio('astral-float', 'Astral Float.m4a');
+    this.load.audio('astral-float', 'astral-float.m4a');
   }
 
   create() {

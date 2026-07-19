@@ -38,7 +38,8 @@ export function startGame() {
   window.addEventListener('pointerdown', unlock);
   window.addEventListener('keydown', unlock);
 
-  // testing hooks (harmless in prod)
-  window.__link = link;
-  window.__game = game;
+  if (import.meta.env.DEV) {
+    window.__link = link;
+    window.__game = game;
+  }
 }
