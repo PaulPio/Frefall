@@ -8,6 +8,10 @@ export class BootScene extends Phaser.Scene {
     super('Boot');
   }
 
+  preload() {
+    this.load.audio('astral-float', 'astral-float.m4a');
+  }
+
   create() {
     const g = this.make.graphics({ x: 0, y: 0 }, false);
     const gen = (key, w, h) => {

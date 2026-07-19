@@ -71,6 +71,7 @@ export class GameOverScene extends Phaser.Scene {
     this.input.keyboard.on('keydown', (e) => {
       if (e.key === 'Escape') {
         synth.ui();
+        synth.stopTrack();
         synth.setIntensity(0);
         this.scene.stop('Game');
         this.scene.start('Menu');
