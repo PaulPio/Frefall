@@ -57,6 +57,14 @@ export class Player {
     return new Phaser.Geom.Rectangle(this.sprite.x - s / 2, this.sprite.y - s / 2, s, s);
   }
 
+  pauseTrail() {
+    this.trail.stop();
+  }
+
+  resumeTrail() {
+    this.trail.start();
+  }
+
   explode(color) {
     this.trail.stop();
     this.sprite.setVisible(false);

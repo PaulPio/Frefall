@@ -4,19 +4,44 @@ import { Link } from './net/Link.js';
 // axis to the desktop at ~30 Hz; touch-drag works as a fallback/override.
 export function startController(room) {
   document.body.classList.add('controller');
-  document.getElementById('app').innerHTML = `
-    <div class="ctl">
-      <h1>FREEFALL</h1>
-      <div class="code">CODE ${room}</div>
-      <div class="status" id="status">connecting…</div>
-      <div class="tiltwrap"><div class="tiltdot" id="tiltdot"></div></div>
-      <div class="hint">hold your phone upright and tilt left / right to steer<br>or drag a finger across the screen</div>
-      <button id="go">TAP TO PLAY</button>
-    </div>`;
 
-  const statusEl = document.getElementById('status');
-  const dotEl = document.getElementById('tiltdot');
-  const btn = document.getElementById('go');
+  const app = document.getElementById('app');
+  const ctl = document.createElement('div');
+  ctl.className = 'ctl';
+
+  const h1 = document.createElement('h1');
+  h1.textContent = 'FREEFALL';
+
+  const codeEl = document.createElement('div');
+  codeEl.className = 'code';
+  codeEl.textContent = `CODE ${room}`;
+
+  const statusEl = document.createElement('div');
+  statusEl.className = 'status';
+  statusEl.id = 'status';
+  statusEl.textContent = 'connecting…';
+
+  const tiltwrap = document.createElement('div');
+  tiltwrap.className = 'tiltwrap';
+  const dotEl = document.createElement('div');
+  dotEl.className = 'tiltdot';
+  dotEl.id = 'tiltdot';
+  tiltwrap.appendChild(dotEl);
+
+  const hint = document.createElement('div');
+  hint.className = 'hint';
+  hint.append(
+    document.createTextNode('hold your phone upright and tilt left / right to steer'),
+    document.createElement('br'),
+    document.createTextNode('or drag a finger across the screen')
+  );
+
+  const btn = document.createElement('button');
+  btn.id = 'go';
+  btn.textContent = 'TAP TO PLAY';
+
+  ctl.append(h1, codeEl, statusEl, tiltwrap, hint, btn);
+  app.replaceChildren(ctl);
 
   const setStatus = (text, cls = '') => {
     statusEl.textContent = text;
@@ -24,9 +49,23 @@ export function startController(room) {
   };
 
   const link = new Link();
-  link.on('connected', () => setStatus('linked to game ✔', 'ok'));
-  link.on('disconnected', () => setStatus('link lost — reconnecting…', 'bad'));
-  link.on('failed', (why) => setStatus(why, 'bad'));
+  let failed = false;
+
+  link.on('connected', () => {
+    failed = false;
+    setStatus('linked to game ✔', 'ok');
+    if (started) btn.textContent = 'TAP = START / RETRY';
+    else btn.textContent = 'TAP TO PLAY';
+  });
+  link.on('disconnected', () => {
+    failed = false;
+    setStatus('link lost — reconnecting…', 'bad');
+  });
+  link.on('failed', (why) => {
+    failed = true;
+    setStatus(why, 'bad');
+    btn.textContent = 'TAP TO RETRY LINK';
+  });
   link.join(room);
 
   // ---- steering state ----
@@ -84,6 +123,13 @@ export function startController(room) {
   window.addEventListener('pointercancel', endTouch);
 
   btn.addEventListener('click', async () => {
+    if (failed) {
+      failed = false;
+      setStatus('connecting…', '');
+      btn.textContent = started ? 'TAP = START / RETRY' : 'TAP TO PLAY';
+      link.retry();
+      return;
+    }
     if (!started) {
       started = true;
       btn.textContent = 'TAP = START / RETRY';

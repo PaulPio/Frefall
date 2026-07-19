@@ -13,6 +13,7 @@ export class MenuScene extends Phaser.Scene {
   create() {
     const link = this.registry.get('link');
     const synth = this.registry.get('synth');
+    synth.setIntensity(0);
     const pal = paletteAt(0);
 
     this.cameras.main.setBackgroundColor(pal.bg);
@@ -127,7 +128,7 @@ export class MenuScene extends Phaser.Scene {
   _showQR(code) {
     const url = new URL(location.href);
     url.searchParams.set('room', code);
-    window.__room = code; // testing hook
+    if (import.meta.env.DEV) window.__room = code;
     this.codeText.setText(`CODE ${code}`);
     QRCode.toDataURL(url.toString(), {
       width: 256,

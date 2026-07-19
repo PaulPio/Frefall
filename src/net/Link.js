@@ -1,13 +1,7 @@
 import { Peer } from 'peerjs';
+import { makeCode, PEER_PREFIX } from './codes.js';
 
-const PREFIX = 'sunjam-freefall-';
-const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I
-
-export function makeCode() {
-  let c = '';
-  for (let i = 0; i < 4; i++) c += CODE_CHARS[(Math.random() * CODE_CHARS.length) | 0];
-  return c;
-}
+export { makeCode, isValidCode, CODE_LEN } from './codes.js';
 
 // Tiny event emitter + PeerJS wrapper shared by both roles.
 // Desktop: link.host(code)  -> emits 'ready'(code), 'connected', 'disconnected', 'axis'(v), 'tap', 'net-error'
@@ -21,6 +15,7 @@ export class Link {
     this.code = null;
     this.joinRetries = 0;
     this.lastMsgAt = 0;
+    this._retryScheduled = false;
   }
 
   // WebRTC won't reliably fire 'close' when the other end dies abruptly, so
@@ -35,7 +30,7 @@ export class Link {
         this.connected = false;
         this.emit('disconnected');
         try {
-          dead.close();
+          dead?.close();
         } catch {
           /* already gone */
         }
@@ -62,13 +57,30 @@ export class Link {
     this.role = 'host';
     this.code = code;
     if (!this._watchdog) this._watchdog = this._startWatchdog(3500);
-    this.peer = new Peer(PREFIX + code);
+    this.peer = new Peer(PEER_PREFIX + code);
 
     this.peer.on('open', () => this.emit('ready', this.code));
 
     this.peer.on('connection', (conn) => {
-      if (this.conn) this.conn.close();
+      // Lock to the active controller — reject steal attempts while linked.
+      // After a real disconnect, the next inbound connection may re-pair.
+      if (this.connected && this.conn?.open) {
+        try {
+          conn.close();
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      const prev = this.conn;
       this._wire(conn);
+      if (prev && prev !== conn) {
+        try {
+          prev.close();
+        } catch {
+          /* ignore */
+        }
+      }
     });
 
     this.peer.on('error', (err) => {
@@ -76,8 +88,8 @@ export class Link {
         // code collision on the public PeerServer — pick a new one
         this.peer.destroy();
         this.host(makeCode());
-      } else if (err.type === 'network' || err.type === 'server-error' || err.type === 'socket-error') {
-        this.emit('net-error');
+      } else {
+        this.emit('net-error', err?.type);
       }
     });
 
@@ -90,6 +102,8 @@ export class Link {
   join(code) {
     this.role = 'join';
     this.code = code;
+    this.joinRetries = 0;
+    this._retryScheduled = false;
     if (!this._watchdog) this._watchdog = this._startWatchdog(10000);
     this.peer = new Peer();
     this.peer.on('open', () => this._dial());
@@ -104,18 +118,40 @@ export class Link {
     });
   }
 
+  /** Manual retry after the phone hit the failed state. */
+  retry() {
+    if (this.role !== 'join' || this.connected) return;
+    this.joinRetries = 0;
+    this._retryScheduled = false;
+    if (this.peer && !this.peer.destroyed) this._dial();
+  }
+
   _dial() {
-    const conn = this.peer.connect(PREFIX + this.code, { reliable: true });
+    if (!this.peer || this.peer.destroyed) return;
+    const prev = this.conn;
+    // Drop the reference first so prev.close() does not re-enter _retryDial.
+    this.conn = null;
+    if (prev) {
+      try {
+        prev.close();
+      } catch {
+        /* ignore */
+      }
+    }
+    const conn = this.peer.connect(PEER_PREFIX + this.code, { reliable: true });
     this._wire(conn);
   }
 
   _retryDial() {
+    if (this.connected || this._retryScheduled) return;
     this.joinRetries++;
-    if (this.joinRetries > 15) {
+    if (this.joinRetries > 30) {
       this.emit('failed', 'game not found — is it still on screen?');
       return;
     }
+    this._retryScheduled = true;
     setTimeout(() => {
+      this._retryScheduled = false;
       if (!this.connected && this.peer && !this.peer.destroyed) this._dial();
     }, 2000);
   }
@@ -123,12 +159,15 @@ export class Link {
   _wire(conn) {
     this.conn = conn;
     conn.on('open', () => {
+      if (this.conn !== conn) return;
       this.connected = true;
       this.joinRetries = 0;
+      this._retryScheduled = false;
       this.lastMsgAt = Date.now();
       this.emit('connected');
     });
     conn.on('data', (d) => {
+      if (this.conn !== conn) return;
       this.lastMsgAt = Date.now();
       this._handle(d);
     });
@@ -147,8 +186,12 @@ export class Link {
 
   _handle(d) {
     if (!d || typeof d !== 'object') return;
-    if (d.t === 'axis') this.emit('axis', typeof d.v === 'number' ? d.v : 0);
-    else if (d.t === 'tap') this.emit('tap');
+    if (d.t === 'axis') {
+      const v = Number.isFinite(d.v) ? Math.min(1, Math.max(-1, d.v)) : 0;
+      this.emit('axis', v);
+    } else if (d.t === 'tap') {
+      this.emit('tap');
+    }
   }
 
   send(msg) {
