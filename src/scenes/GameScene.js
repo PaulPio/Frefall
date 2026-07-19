@@ -19,6 +19,10 @@ export class GameScene extends Phaser.Scene {
     this.link = this.registry.get('link');
     this.synth = this.registry.get('synth');
 
+    // Set the scene on synth and play the audio track
+    this.synth.scene = this;
+    this.synth.playTrack();
+
     this.elapsed = 0;
     this.gems = 0;
     this.zone = 0;
@@ -111,6 +115,7 @@ export class GameScene extends Phaser.Scene {
         return;
       }
       if (e.key === 'Escape') {
+        this.synth.stopTrack();
         this.scene.start('Menu');
         return;
       }
@@ -207,6 +212,7 @@ export class GameScene extends Phaser.Scene {
   _die(depth, pal) {
     this.alive = false;
     this.synth.death();
+    this.synth.stopTrack();
     this.synth.setIntensity(0.05);
     this.player.explode(pal.player);
     this.cameras.main.shake(300, 0.012);

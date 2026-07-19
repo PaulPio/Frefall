@@ -7,12 +7,14 @@ const MINOR = [0, 3, 5, 7, 10, 12, 15, 19];
 const BASS_PATTERN = [0, 0, -2, 5]; // per bar
 
 export class Synth {
-  constructor() {
+  constructor(scene = null) {
     this.ctx = null;
     this.muted = localStorage.getItem(STORE_MUTED) === '1';
     this.intensity = 0; // 0..1, driven by fall speed
     this.step = 0;
     this.bar = 0;
+    this.scene = scene;
+    this.audioTrack = null;
   }
 
   unlock() {
@@ -40,7 +42,25 @@ export class Synth {
     this.muted = !this.muted;
     localStorage.setItem(STORE_MUTED, this.muted ? '1' : '0');
     if (this.master) this.master.gain.value = this.muted ? 0 : 0.4;
+    if (this.audioTrack) this.audioTrack.setMute(this.muted);
     return this.muted;
+  }
+
+  playTrack() {
+    if (this.scene && this.scene.sound) {
+      this.audioTrack = this.scene.sound.add('astral-float', {
+        volume: this.muted ? 0 : 0.6,
+        loop: true,
+      });
+      this.audioTrack.play();
+    }
+  }
+
+  stopTrack() {
+    if (this.audioTrack) {
+      this.audioTrack.stop();
+      this.audioTrack = null;
+    }
   }
 
   setIntensity(v) {
